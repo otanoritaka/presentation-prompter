@@ -306,7 +306,7 @@ textEl.addEventListener("touchstart",e=>{ tx=e.touches[0].clientX; ty=e.touches[
 textEl.addEventListener("touchend",e=>{
   if(tx===null) return;
   const dx=e.changedTouches[0].clientX-tx, dy=e.changedTouches[0].clientY-ty;
-  if(Math.abs(dx)>60 && Math.abs(dx)>Math.abs(dy)*1.5){ dx<0?go(cur+1):go(cur-1); }
+  if(Math.abs(dx)>60 && Math.abs(dx)>Math.abs(dy)*1.5){ dx>0?go(cur+1):go(cur-1); }
   tx=ty=null;
 },{passive:true});
 

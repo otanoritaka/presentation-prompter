@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>発表プロンプター｜静岡県立こども病院</title>
+<style>
+  :root{ --fs:24px; }
+  *{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ height:100%; overscroll-behavior:none; }
+  body{
+    background:#0b0e14; color:#f2f4f8;
+    font-family:-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif;
+    display:flex; flex-direction:column;
+    padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom);
+    user-select:none; -webkit-user-select:none;
+  }
+  /* ── 上段：タイマー ── */
+  #topbar{
+    display:flex; align-items:center; gap:8px;
+    padding:6px 10px; background:#131826; border-bottom:1px solid #232a3d;
+  }
+  #resetBtn{
+    font-size:20px; padding:8px 12px; background:#1d2436; color:#8fa0c0;
+    border:none; border-radius:10px;
+  }
+  #clock{
+    flex:1; text-align:center; font-variant-numeric:tabular-nums;
+    font-size:44px; font-weight:800; letter-spacing:1px; color:#4ade80;
+    line-height:1.1; border-radius:12px;
+  }
+  #clock.paused{ color:#8fa0c0; }
+  #clock.warn{ color:#fbbf24; }
+  #clock.over{ color:#f87171; animation:blink 1s step-start infinite; }
+  @keyframes blink{ 50%{ opacity:.35; } }
+  #clock small{ display:block; font-size:11px; font-weight:600; color:#66738f; letter-spacing:0; }
+  #rightbox{ text-align:right; min-width:74px; }
+  #pos{ font-size:15px; font-weight:700; color:#8fa0c0; }
+  #delta{ font-size:15px; font-weight:800; min-height:18px; }
+  #delta.ahead{ color:#4ade80; }
+  #delta.behind{ color:#f87171; }
+  /* ── 中段：スライド情報 ── */
+  #subbar{
+    display:flex; align-items:baseline; gap:10px;
+    padding:8px 14px 6px; background:#10141f;
+  }
+  #stitle{ font-size:17px; font-weight:800; color:#7dd3fc; flex:1;
+           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #scount{ font-size:17px; font-weight:800; color:#a5b4cf; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  #scount.over{ color:#f87171; }
+  /* ── 本文 ── */
+  #text{
+    flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    padding:14px 18px 24px; font-size:var(--fs); line-height:1.65; font-weight:700;
+  }
+  #text p{ margin-bottom:.7em; }
+  #text .dir{ color:#facc15; font-size:.78em; font-weight:800; }   /* 演出指示 */
+  #text .em{ color:#fda4af; }                                       /* 強調セリフ */
+  #nextline{
+    padding:6px 14px; font-size:13px; color:#66738f; background:#10141f;
+    border-top:1px solid #1b2233; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  /* ── 下段：操作 ── */
+  footer{
+    display:flex; gap:8px; padding:8px 10px 10px; background:#131826; border-top:1px solid #232a3d;
+  }
+  footer button{
+    border:none; border-radius:14px; font-weight:800; color:#e6ebf5; background:#1d2436;
+    padding:16px 0; font-size:18px;
+  }
+  #prev{ flex:2; }
+  #next{ flex:3; background:#2563eb; font-size:20px; }
+  #fminus,#fplus{ flex:1; font-size:17px; color:#9fb0d0; }
+  #editBtn{ flex:1; font-size:19px; }
+  /* ── 編集オーバーレイ ── */
+  #editWrap{
+    position:fixed; inset:0; background:#0b0e14; display:none; flex-direction:column; z-index:50;
+    padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+  #editWrap.show{ display:flex; }
+  #editHead{ padding:12px 16px; font-size:16px; font-weight:800; color:#7dd3fc; }
+  #editArea{
+    flex:1; margin:0 12px; background:#131826; color:#f2f4f8; border:1px solid #2c3550;
+    border-radius:12px; padding:12px; font-size:18px; line-height:1.6;
+    font-family:inherit; resize:none; user-select:text; -webkit-user-select:text;
+  }
+  #editBtns{ display:flex; gap:8px; padding:10px 12px; }
+  #editBtns button{ flex:1; border:none; border-radius:12px; padding:14px 0; font-size:17px; font-weight:800; }
+  #saveBtn{ background:#16a34a; color:#fff; }
+  #cancelBtn{ background:#1d2436; color:#c3cde0; }
+  #revertBtn{ background:#3f1d24; color:#fda4af; }
+  #hint{
+    position:fixed; left:0; right:0; top:38%; text-align:center; pointer-events:none;
+    font-size:15px; color:#66738f; z-index:5; transition:opacity .5s;
+  }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <button id="resetBtn" aria-label="リセット">↺</button>
+  <div id="clock" class="paused"><span id="clockNum">0:00</span><small id="clockHint">タップで開始（持ち時間 7:00）</small></div>
+  <div id="rightbox">
+    <div id="pos">1/21</div>
+    <div id="delta"></div>
+  </div>
+</div>
+
+<div id="subbar">
+  <span id="stitle"></span>
+  <span id="scount"></span>
+</div>
+
+<main id="text"></main>
+<div id="nextline"></div>
+
+<footer>
+  <button id="prev">◀ 前</button>
+  <button id="fminus">A−</button>
+  <button id="fplus">A＋</button>
+  <button id="editBtn">✎</button>
+  <button id="next">次 ▶</button>
+</footer>
+
+<div id="hint">◀ 左右スワイプでもページ送りできます ▶</div>
+
+<div id="editWrap">
+  <div id="editHead">原稿を編集（このスライドのみ）</div>
+  <textarea id="editArea"></textarea>
+  <div id="editBtns">
+    <button id="revertBtn">初期原稿に戻す</button>
+    <button id="cancelBtn">キャンセル</button>
+    <button id="saveBtn">保存</button>
+  </div>
+</div>
+
+<script>
+/* ============ 原稿データ（推敲版 2026-07-04） ============ */
+/* target: 目安秒数。textの「◆…」行は演出指示（黄色表示）、《…》は強調（ピンク表示） */
+const DEFAULTS = [
+{t:"1. 挨拶", s:10, x:`静岡県立こども病院、広報委員長・心臓血管外科の太田教隆です。
+本日は貴重な機会をありがとうございます。`},
+{t:"2. 1999年のメール", s:35, x:`《「先生。経済的、肉体的、精神的に限界です。治療継続、お願いできますか？」》
+——1999年、当院ホームページに届いた、初めての問い合わせメールです。
+送り主は、静岡のすぐ近くにお住まいなのに、900キロ離れた病院に通っていた、重い心臓病の赤ちゃんのお父さまでした。
+正しい情報を、必要な人に届けること。その重みと、インターネットの可能性を、私は今も忘れられません。`},
+{t:"3. 表紙・テーマ", s:12, x:`あれから四半世紀。今回、十数年ぶりにホームページを全面リニューアルしました。
+テーマは——《「不安を、ワクワクに」》。`},
+{t:"4. 主役は？", s:18, x:`まず考えたのは、たった一つの問いです。
+「このホームページの主役は、誰だろう？」
+——答えは、こどもたち、そしてご家族です。`},
+{t:"5. こどものためのページ誕生", s:28, x:`当院は、かかりつけ医から紹介されて来る専門病院。こどもにとっては、できれば行きたくない場所です。
+怖くて緊張するのは、ご家族も同じ。
+その気持ちを安心に——いえ、「行ってみたい」というワクワクにまで変えたい。
+そこで生まれたのが《「こどものためのページ」》です。`},
+{t:"6. コンセプト", s:10, x:`コンセプトはこの二つ。
+《「スマホファースト」》と、《「こどもが主役」》。`},
+{t:"7. スマホファースト", s:15, x:`不安を抱えたご家族が迷わないよう、スマホのトップ画面は、思い切って大きなボタンだけに整理しました。`},
+{t:"8. 救急受診", s:15, x:`たとえば夜中、こどもの様子がおかしい——
+このボタンを片手でワンタップするだけで、救急受診の情報にすぐ届きます。`},
+{t:"9. 出産をお考えの方", s:8, x:`出産をお考えのご家族にも、指一本で。`},
+{t:"10. こどもページ", s:15, x:`そして今回の主役、「こどものためのページ」。
+専属のチャイルド・ライフ・スペシャリストをリーダーに、専門チームを立ち上げました。`},
+{t:"11. みんなの応援団", s:18, x:`開くと迎えてくれるのは、ワクワクする入り口の数々。
+合言葉は《「病院の人は、みんなの味方だよ」》。
+このひと言のために、全部署・全職員で知恵を絞りました。`},
+{t:"12. 特徴① こども向け説明", s:26, x:`特徴は3つ。1つ目は、こども向けの体と病気の説明。
+診療科や病名からではなく、あたま、手足、おなか、そして「こころ」まで、気になる部分から探せます。
+すべて各診療科の専門医が、CLS監修のもと書き下ろしました。`},
+{t:"13. 特徴② クイズ", s:13, x:`2つ目は、体験型コンテンツ。
+クイズで遊びながら院内を探検し、病院に親しみを持ってもらいます。`},
+{t:"14. お楽しみコーナー", s:7, x:`お楽しみコーナーもご用意しました。`},
+{t:"15. 動画20本以上", s:18, x:`まだ文字が読めない小さな子には、大好きな動画を。
+撮影から編集まで、すべて職員の手づくり。その数、20本以上です。`},
+{t:"16. ショート動画 → 動画へ", s:12, x:`最近は、より多くのこどもと親世代に届くよう、ショート動画にも取り組んでいます。
+《それでは、ご覧ください。》`},
+{t:"17. ★動画スライド", s:49, x:`◆ 動画27秒＝自動再生・ミュート済み。動画中は話さない
+◆ 動画が終わったら ↓
+すべて“こども目線”です。採血も、CTも、来院前に体験できます。
+手術室では、選んだ好きな香りが麻酔のマスクから香る仕掛けまで。
+《「知っている」と「知らない」では、こどもの安心がまるで違うのです。》`},
+{t:"18. 反響", s:22, x:`公開後、「不安が、動画で楽しみに変わった」との声が届きました。
+県外の看護学生さんにも視聴が広がり、職場体験や入職面接で「病院の雰囲気を知る参考になった」との声もいただいています。`},
+{t:"19. 特徴③ きょうだい", s:24, x:`3つ目は、きょうだいのページ。
+病気と闘うこどもには、同じ年頃のきょうだいがいることが少なくありません。
+家でひとり、寂しい思いをしているかもしれない——その子へ。
+きょうだいの安心は家族の安心につながり、それが良いケアをもたらします。`},
+{t:"20. まとめ", s:18, x:`私たちは、広報のためにホームページをつくったのではありません。
+こどもの不安を、安心に。怖い病院を、「行ってみたい」場所に。`},
+{t:"21. 集合写真・締め", s:12, x:`病院は、みんなの応援団。
+——《不安を、ワクワクに。》
+ご清聴、ありがとうございました。`},
+];
+const LIMIT = 7*60;          // 持ち時間 7:00
+const WARN  = 6*60;          // 6:00 で黄色
+const OVER  = 6*60+40;       // 6:40 で赤点滅
+
+/* ============ 状態 ============ */
+let texts;                    // 編集反映済み原稿
+try { texts = JSON.parse(localStorage.getItem("pv_texts")||"null"); } catch(e){ texts=null; }
+if(!Array.isArray(texts) || texts.length!==DEFAULTS.length) texts = DEFAULTS.map(d=>d.x);
+
+let fs = 24;
+try { fs = parseInt(localStorage.getItem("pv_font"))||24; } catch(e){}
+document.documentElement.style.setProperty("--fs", fs+"px");
+
+let cur = 0;                  // 現在スライド
+let running = false;
+let elapsed = 0;              // 合計経過秒（float）
+let lastTick = 0;
+let slideStartAt = 0;         // このスライドに入った時点の経過秒
+let deltaAtArrival = null;    // 到着時の予定比（秒）
+
+const planStart = [];         // 各スライドの予定開始秒
+{ let acc=0; for(const d of DEFAULTS){ planStart.push(acc); acc+=d.s; } }
+
+/* ============ 要素 ============ */
+const $ = id => document.getElementById(id);
+const clockEl=$("clock"), clockNum=$("clockNum"), clockHint=$("clockHint"),
+      posEl=$("pos"), deltaEl=$("delta"), stitleEl=$("stitle"), scountEl=$("scount"),
+      textEl=$("text"), nextEl=$("nextline"), hintEl=$("hint");
+
+/* ============ 描画 ============ */
+function fmt(sec){ sec=Math.max(0,Math.floor(sec)); return Math.floor(sec/60)+":"+String(sec%60).padStart(2,"0"); }
+
+function renderSlide(){
+  posEl.textContent = (cur+1)+"/"+DEFAULTS.length;
+  stitleEl.textContent = DEFAULTS[cur].t;
+  const html = texts[cur].split("\n").map(line=>{
+    line = line.replace(/&/g,"&amp;").replace(/</g,"&lt;");
+    line = line.replace(/《(.*?)》/g,'<span class="em">$1</span>');
+    if(line.startsWith("◆")) return '<p class="dir">'+line+"</p>";
+    return "<p>"+line+"</p>";
+  }).join("");
+  textEl.innerHTML = html;
+  textEl.scrollTop = 0;
+  nextEl.textContent = cur+1<DEFAULTS.length ? "次▶ "+DEFAULTS[cur+1].t : "（最終スライド）";
+  if(deltaAtArrival===null){ deltaEl.textContent=""; deltaEl.className=""; }
+  else{
+    const d=Math.round(deltaAtArrival);
+    deltaEl.textContent = d>0 ? "+"+d+"秒 遅れ" : d<0 ? (-d)+"秒 先行" : "予定通り";
+    deltaEl.className = d>3 ? "behind" : "ahead";
+  }
+}
+
+function tick(){
+  if(running){
+    const now=performance.now()/1000;
+    elapsed += now-lastTick; lastTick=now;
+  }
+  clockNum.textContent = fmt(elapsed);
+  clockEl.className = !running ? "paused" : elapsed>=OVER ? "over" : elapsed>=WARN ? "warn" : "";
+  clockHint.textContent = running ? "残り "+fmt(LIMIT-elapsed)+"（タップで一時停止）"
+                                  : elapsed>0 ? "一時停止中（タップで再開）" : "タップで開始（持ち時間 7:00）";
+  const rem = DEFAULTS[cur].s-(elapsed-slideStartAt);
+  scountEl.textContent = running||elapsed>0 ? (rem>=0 ? "このスライド残り "+Math.ceil(rem)+"秒" : "超過 "+Math.ceil(-rem)+"秒")
+                                            : "目安 "+DEFAULTS[cur].s+"秒";
+  scountEl.className = rem<0 ? "over" : "";
+}
+
+/* ============ 操作 ============ */
+function go(n){
+  if(n<0||n>=DEFAULTS.length) return;
+  cur=n;
+  slideStartAt=elapsed;
+  deltaAtArrival = (running||elapsed>0) ? elapsed-planStart[cur] : null;
+  renderSlide();
+}
+$("next").onclick=()=>go(cur+1);
+$("prev").onclick=()=>go(cur-1);
+
+clockEl.onclick=()=>{
+  running=!running;
+  if(running){ lastTick=performance.now()/1000; requestWake(); }
+};
+$("resetBtn").onclick=()=>{
+  if(!confirm("タイマーとページを最初に戻しますか？")) return;
+  running=false; elapsed=0; slideStartAt=0; deltaAtArrival=null; go(0);
+};
+
+$("fplus").onclick=()=>setFont(fs+2);
+$("fminus").onclick=()=>setFont(fs-2);
+function setFont(v){
+  fs=Math.min(44,Math.max(16,v));
+  document.documentElement.style.setProperty("--fs",fs+"px");
+  try{ localStorage.setItem("pv_font",fs); }catch(e){}
+}
+
+/* 編集 */
+const editWrap=$("editWrap"), editArea=$("editArea");
+$("editBtn").onclick=()=>{ editArea.value=texts[cur]; editWrap.classList.add("show"); };
+$("cancelBtn").onclick=()=>editWrap.classList.remove("show");
+$("saveBtn").onclick=()=>{
+  texts[cur]=editArea.value;
+  try{ localStorage.setItem("pv_texts",JSON.stringify(texts)); }catch(e){}
+  editWrap.classList.remove("show"); renderSlide();
+};
+$("revertBtn").onclick=()=>{ editArea.value=DEFAULTS[cur].x; };
+
+/* スワイプ */
+let tx=null,ty=null;
+textEl.addEventListener("touchstart",e=>{ tx=e.touches[0].clientX; ty=e.touches[0].clientY; },{passive:true});
+textEl.addEventListener("touchend",e=>{
+  if(tx===null) return;
+  const dx=e.changedTouches[0].clientX-tx, dy=e.changedTouches[0].clientY-ty;
+  if(Math.abs(dx)>60 && Math.abs(dx)>Math.abs(dy)*1.5){ dx<0?go(cur+1):go(cur-1); }
+  tx=ty=null;
+},{passive:true});
+
+/* 画面スリープ防止（対応端末のみ） */
+let wl=null;
+async function requestWake(){
+  try{ if("wakeLock" in navigator){ wl=await navigator.wakeLock.request("screen"); } }catch(e){}
+}
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible"&&running) requestWake(); });
+
+/* 起動 */
+renderSlide();
+tick();
+setInterval(tick, 250);
+setTimeout(()=>hintEl.style.opacity=0, 4000);
+</script>
+</body>
+</html>
